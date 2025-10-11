@@ -44,6 +44,9 @@ class Profiler:
             print(f"{k}:")
             for k1, v1 in v.items():
                 print(f"\t{k1}: {v1}")
+            print(f"\tmin_call_time: {min(self.stat[k]["call_time"])}")
+            print(f"\tmax_call_time: {max(self.stat[k]["call_time"])}")
+            print(f"\tavg_call_time: {sum(self.stat[k]["call_time"]) / len(self.stat[k]["call_time"])}")
 
 
 profiler = Profiler()
@@ -62,8 +65,6 @@ def child_func():
 
 
 if __name__ == "__main__":
-    # print("до:", profiler.stat)
     parent_func()
     child_func()
-    # print("после:", profiler.stat)
     profiler.print_stat()
