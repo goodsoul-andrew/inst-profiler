@@ -39,6 +39,12 @@ class Profiler:
 
         return wrapper
 
+    def print_stat(self):
+        for k, v in self.stat.items():
+            print(f"{k}:")
+            for k1, v1 in v.items():
+                print(f"\t{k1}: {v1}")
+
 
 profiler = Profiler()
 
@@ -56,7 +62,8 @@ def child_func():
 
 
 if __name__ == "__main__":
-    print("до:", profiler.stat)
+    # print("до:", profiler.stat)
     parent_func()
     child_func()
-    print("после:", profiler.stat)
+    # print("после:", profiler.stat)
+    profiler.print_stat()
