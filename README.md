@@ -1,4 +1,16 @@
 # inst-profiler
-
-###Запуск
-python3 -m profiler <script_file>
+Инструментирующий профайлер для питона
+### Запуск
+`python3 -m profiler <script_file>`  
+выводит   
+```
+<имя_функции>:  
+    calls: кол-во вызовов  
+    call_time: время каждого вызова
+    clean_time: суммарное чистое (без учёта внутренних вызовов) время
+    cumulative_time: суммарное время
+    min_call_time: минимальное время
+    max_call_time: максимальное время
+    avg_call_time: среднее время
+```
+для каждой вызванной функции

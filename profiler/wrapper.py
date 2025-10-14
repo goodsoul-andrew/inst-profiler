@@ -129,8 +129,6 @@ def run_profiled_script(script_path: str, args):
     tree = ast.parse(code)
     profiling_visitor = ProfilingVisitor()
     modified_tree = profiling_visitor.visit(tree)
-    print(profiling_visitor.decorated)
-    print(profiling_visitor.to_decorate)
     ast.fix_missing_locations(modified_tree)
     compiled_code = compile(modified_tree, filename=f"{script_path}_mod", mode='exec')
     exec(compiled_code, script_globals)
