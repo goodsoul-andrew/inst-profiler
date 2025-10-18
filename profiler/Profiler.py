@@ -1,5 +1,6 @@
 import functools
 import time
+import json
 
 
 class Profiler:
@@ -64,6 +65,10 @@ class Profiler:
             else:
                 print(f"{ncalls:9d} {tottime:9.6f} {percall1:9.6f} {cumtime:9.6f} {percall2:9.6f} {k}")
 
+    def save_stat(self, filename="profiler_stat.json"):
+        with open(filename, "w") as f:
+            json.dump(self.stat, f, indent=4)
+
 
 profiler = Profiler()
 
@@ -87,3 +92,4 @@ def main():
 if __name__ == "__main__":
     main()
     profiler.print_stat()
+    profiler.save_stat("stats.json")
