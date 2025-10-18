@@ -40,13 +40,15 @@ class Profiler:
         return wrapper
 
     def print_stat(self):
+        print(f"{'ncalls':>9} {'tottime':>9} {'percall':>9} {'cumtime':>9} {'percall':>9} function")
         for k, v in self.stat.items():
-            print(f"{k}:")
-            for k1, v1 in v.items():
-                print(f"\t{k1}: {v1}")
-            print(f"\tmin_call_time: {min(self.stat[k]["call_time"])}")
-            print(f"\tmax_call_time: {max(self.stat[k]["call_time"])}")
-            print(f"\tavg_call_time: {sum(self.stat[k]["call_time"]) / len(self.stat[k]["call_time"])}")
+            ncalls = v["calls"]
+            tottime = v["clean_time"]
+            percall1 = tottime / ncalls if ncalls else 0
+            cumtime = v["cumulative_time"]
+            percall2 = cumtime / ncalls if ncalls else 0
+
+            print(f"{ncalls:9d} {tottime:9.6f} {percall1:9.6f} {cumtime:9.6f} {percall2:9.6f} {k}")
 
 
 profiler = Profiler()
