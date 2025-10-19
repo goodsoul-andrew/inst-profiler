@@ -7,6 +7,7 @@ class Profiler:
     def __init__(self):
         self.stat = {}
         self.call_stack = []
+        self.full_call_stack = []
 
     def profile(self, func):
         @functools.wraps(func)
@@ -34,6 +35,7 @@ class Profiler:
 
             name, start, children_time = self.call_stack.pop()
             elapsed_time = end_time - start
+            self.full_call_stack.append({"name": name, "start": start_time, "end": end_time})
             clean_time = elapsed_time - children_time
 
             self.stat[func_name]["tottime"] += clean_time

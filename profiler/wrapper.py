@@ -1,8 +1,13 @@
+import os
 import sys
 import ast
-from keyword import kwlist
+import inspect
+import importlib
+import time
 
+from pdb_copy import Pdb
 from profiler.Profiler import profiler
+from profiler.flame_graph import FlameGraph
 
 
 class ProfilingVisitor(ast.NodeTransformer):
@@ -10,70 +15,7 @@ class ProfilingVisitor(ast.NodeTransformer):
         self.decorated = set()
         self.context_stack = []
         self.to_decorate = set()
-
-    '''def visit_ClassDef(self, node):
-        self.context_stack.append(node.name)
-        self.generic_visit(node)
-        self.context_stack.pop()
-        return node
-
-    def visit_FunctionDef(self, node: ast.FunctionDef):
-        self.context_stack.append(node.name)
-        self.generic_visit(node)
-        func_name = self.get_function_name(node)
-        result = node
-        has_profile_decorator = False
-        for decorator in node.decorator_list:
-            if (isinstance(decorator, ast.Attribute) and decorator.attr == 'profile' and
-                    isinstance(decorator.value, ast.Name) and decorator.value.id == 'profiler'):
-                has_profile_decorator = True
-                break
-        if not has_profile_decorator:
-            profiler_name = ast.Name(id='profiler', ctx=ast.Load())
-            profile_decorator = ast.Attribute(value=profiler_name, attr='profile', ctx=ast.Load())
-            self.decorated.add(func_name)
-            new_decorator_list = [profile_decorator] + node.decorator_list
-            new_node = ast.FunctionDef(
-                name=node.name,
-                args=node.args,
-                body=node.body,
-                decorator_list=new_decorator_list,
-                returns=node.returns,
-                type_comment=node.type_comment,
-            )
-            ast.copy_location(new_node, node)
-            result = new_node
-        self.context_stack.pop()
-        return result
-
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef):
-        self.context_stack.append(node.name)
-        self.generic_visit(node)
-        func_name = self.get_function_name(node)
-        result = node
-        has_profile_decorator = False
-        for decorator in node.decorator_list:
-            if (isinstance(decorator, ast.Attribute) and decorator.attr == 'profile' and
-                    isinstance(decorator.value, ast.Name) and decorator.value.id == 'profiler'):
-                has_profile_decorator = True
-                break
-        if not has_profile_decorator:
-            profiler_name = ast.Name(id='profiler', ctx=ast.Load())
-            profile_decorator = ast.Attribute(value=profiler_name, attr='profile', ctx=ast.Load())
-            self.decorated.add(func_name)
-            new_decorator_list = [profile_decorator] + node.decorator_list
-            new_node = ast.AsyncFunctionDef(
-                name=node.name,
-                args=node.args,
-                body=node.body,
-                decorator_list=new_decorator_list,
-                returns=node.returns,
-                type_comment=node.type_comment
-            )
-            ast.copy_location(new_node, node)
-            result = new_node
-        self.context_stack.pop()
-        return result'''
+        self.modules = set()
 
     def get_function_name(self, node_func: ast.expr | ast.stmt) -> str:
         if isinstance(node_func, ast.Name):
@@ -90,6 +32,29 @@ class ProfilingVisitor(ast.NodeTransformer):
             return None
         else:
             return None
+
+    def lookupmodule(self, filename: str): # скопировал из pdb
+        if os.path.isabs(filename) and os.path.exists(filename):
+            return filename
+        f = os.path.join(sys.path[0], filename)
+        root, ext = os.path.splitext(filename)
+        if ext == '':
+            filename = filename + '.py'
+        if os.path.isabs(filename):
+            return filename
+        for dirname in sys.path:
+            while os.path.islink(dirname):
+                dirname = os.readlink(dirname)
+            fullname = os.path.join(dirname, filename)
+            if os.path.exists(fullname):
+                return fullname
+        return None
+
+    def visit_Import(self, node):
+        for mod_name in node.names:
+            # print("import", self.lookupmodule(mod_name.name))
+            self.modules.add(self.lookupmodule(mod_name.name))
+        return node
 
     def visit_Call(self, node: ast.Call):
         self.generic_visit(node)
@@ -117,6 +82,42 @@ class ProfilingVisitor(ast.NodeTransformer):
         return node
 
 
+def wrap_module_functions(module_name: str, profiler_decorator):
+    try:
+        module = importlib.import_module(module_name)
+        wrapped_module = type(module)()
+        for name in dir(module):
+            obj = getattr(module, name)
+            if callable(obj) and not inspect.isclass(obj):
+                try:
+                    wrapped_obj = profiler_decorator(obj)
+                    setattr(wrapped_module, name, wrapped_obj)
+                except Exception as e:
+                    print(f"Warning: Could not wrap {module_name}.{name}: {e}", file=sys.stderr)
+                    setattr(wrapped_module, name, obj)
+            else:
+                setattr(wrapped_module, name, obj)
+        return wrapped_module
+    except ImportError:
+        print(f"Warning: Module '{module_name}' not found, cannot wrap its functions.", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"Warning: Error wrapping module '{module_name}': {e}", file=sys.stderr)
+        return None
+
+
+def decorate_program(script_path):
+    with open(script_path, "r") as file:
+        code = file.read()
+    tree = ast.parse(code)
+    # print(ast.dump(tree))
+    profiling_visitor = ProfilingVisitor()
+    modified_tree = profiling_visitor.visit(tree)
+    ast.fix_missing_locations(modified_tree)
+    compiled_code = compile(modified_tree, filename=f"{script_path}_mod", mode='exec')
+    return compiled_code
+
+
 def run_profiled_script(script_path: str, args):
     sys.argv = args[1:]
     script_globals = {
@@ -127,9 +128,16 @@ def run_profiled_script(script_path: str, args):
     with open(script_path, "r") as file:
         code = file.read()
     tree = ast.parse(code)
+    # print(ast.dump(tree))
     profiling_visitor = ProfilingVisitor()
     modified_tree = profiling_visitor.visit(tree)
     ast.fix_missing_locations(modified_tree)
     compiled_code = compile(modified_tree, filename=f"{script_path}_mod", mode='exec')
+    start = time.perf_counter()
     exec(compiled_code, script_globals)
+    end = time.perf_counter()
+    total_time = end - start
     profiler.print_stat()
+    graph = FlameGraph.build_flame_graph(total_time, profiler.full_call_stack)
+    for line in graph:
+        print(line)
