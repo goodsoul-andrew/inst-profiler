@@ -4,18 +4,22 @@ import ast
 import inspect
 import importlib
 import time
+import types
 
-from pdb_copy import Pdb
 from profiler.Profiler import profiler
 from profiler.flame_graph import FlameGraph
+from profiler.module_collector import collect_all_modules
 
 
 class ProfilingVisitor(ast.NodeTransformer):
-    def __init__(self):
+    def __init__(self, decorate_imports=True, modules: dict[str, str]=None):
         self.decorated = set()
         self.context_stack = []
         self.to_decorate = set()
-        self.modules = set()
+        self.decorate_imports = decorate_imports
+        self.modules: dict[str, str] = {}
+        if modules:
+            self.modules = modules
 
     def get_function_name(self, node_func: ast.expr | ast.stmt) -> str:
         if isinstance(node_func, ast.Name):
@@ -38,31 +42,27 @@ class ProfilingVisitor(ast.NodeTransformer):
             return filename
         f = os.path.join(sys.path[0], filename)
         root, ext = os.path.splitext(filename)
-        if ext == '':
-            filename = filename + '.py'
+        if ext == "":
+            filename = filename + ".py"
         if os.path.isabs(filename):
             return filename
         for dirname in sys.path:
-            while os.path.islink(dirname):
-                dirname = os.readlink(dirname)
+            if os.path.islink(dirname):
+                continue
+            '''while os.path.islink(dirname):
+                dirname = os.readlink(dirname)'''
             fullname = os.path.join(dirname, filename)
             if os.path.exists(fullname):
                 return fullname
         return None
-
-    def visit_Import(self, node):
-        for mod_name in node.names:
-            # print("import", self.lookupmodule(mod_name.name))
-            self.modules.add(self.lookupmodule(mod_name.name))
-        return node
 
     def visit_Call(self, node: ast.Call):
         self.generic_visit(node)
         func_name = self.get_function_name(node.func)
         if func_name and func_name not in self.decorated:
             profile_attribute = ast.Attribute(
-                value=ast.Name(id='profiler', ctx=ast.Load()),
-                attr='profile',
+                value=ast.Name(id="profiler", ctx=ast.Load()),
+                attr="profile",
                 ctx=ast.Load()
             )
             ast.copy_location(profile_attribute, node)
@@ -82,59 +82,65 @@ class ProfilingVisitor(ast.NodeTransformer):
         return node
 
 
-def wrap_module_functions(module_name: str, profiler_decorator):
-    try:
-        module = importlib.import_module(module_name)
-        wrapped_module = type(module)()
-        for name in dir(module):
-            obj = getattr(module, name)
-            if callable(obj) and not inspect.isclass(obj):
-                try:
-                    wrapped_obj = profiler_decorator(obj)
-                    setattr(wrapped_module, name, wrapped_obj)
-                except Exception as e:
-                    print(f"Warning: Could not wrap {module_name}.{name}: {e}", file=sys.stderr)
-                    setattr(wrapped_module, name, obj)
-            else:
-                setattr(wrapped_module, name, obj)
-        return wrapped_module
-    except ImportError:
-        print(f"Warning: Module '{module_name}' not found, cannot wrap its functions.", file=sys.stderr)
-        return None
-    except Exception as e:
-        print(f"Warning: Error wrapping module '{module_name}': {e}", file=sys.stderr)
-        return None
+def decorate_all_modules(all_modules):
+    decorated_modules = {}
+    for module_name, module_path in all_modules.items():
+        if not os.path.exists(module_path):
+            continue
+        try:
+            with open(module_path, "r", encoding="utf-8") as f:
+                code = f.read()
+            tree = ast.parse(code)
+            profiling_visitor = ProfilingVisitor()
+            modified_tree = profiling_visitor.visit(tree)
+            ast.fix_missing_locations(modified_tree)
+            compiled_code = compile(modified_tree, filename=f"{module_path}_mod", mode="exec")
+            decorated_modules[module_name] = compiled_code
+        except Exception as e:
+            print(f"Error decorating module {module_name}: {e}")
+    return decorated_modules
 
 
-def decorate_program(script_path):
-    with open(script_path, "r") as file:
-        code = file.read()
-    tree = ast.parse(code)
-    # print(ast.dump(tree))
-    profiling_visitor = ProfilingVisitor()
-    modified_tree = profiling_visitor.visit(tree)
-    ast.fix_missing_locations(modified_tree)
-    compiled_code = compile(modified_tree, filename=f"{script_path}_mod", mode='exec')
-    return compiled_code
+def replace_sys_modules(all_modules, decorated_modules):
+    for module_name, compiled_code in decorated_modules.items():
+        if module_name == "__main__":
+            continue
+        try:
+            module_obj = types.ModuleType(module_name)
+            module_globals = {
+                "__name__": module_name,
+                "__file__": all_modules[module_name],
+                "profiler": profiler
+            }
+            exec(compiled_code, module_globals)
+            for name, obj in module_globals.items():
+                if not name.startswith('__'):
+                    setattr(module_obj, name, obj)
+            sys.modules[module_name] = module_obj
+        except Exception as e:
+            print(f"Error replacing module {module_name}: {e}")
 
 
 def run_profiled_script(script_path: str, args):
     sys.argv = args[1:]
+    all_modules = collect_all_modules(script_path)
+    decorated_modules = decorate_all_modules(all_modules)
+    replace_sys_modules(all_modules, decorated_modules)
     script_globals = {
-        '__name__': '__main__',
-        '__file__': script_path,
-        'profiler': profiler
+        "__name__": "__main__",
+        "__file__": script_path,
+        "profiler": profiler
     }
-    with open(script_path, "r") as file:
-        code = file.read()
-    tree = ast.parse(code)
-    # print(ast.dump(tree))
-    profiling_visitor = ProfilingVisitor()
-    modified_tree = profiling_visitor.visit(tree)
-    ast.fix_missing_locations(modified_tree)
-    compiled_code = compile(modified_tree, filename=f"{script_path}_mod", mode='exec')
     start = time.perf_counter()
-    exec(compiled_code, script_globals)
+    try:
+        if "__main__" in decorated_modules:
+            exec(decorated_modules["__main__"], script_globals)
+        else:
+            print("Warning: Main module not found in decorated modules")
+    except Exception as e:
+        print(f"Error executing decorated script: {e}")
+        import traceback
+        traceback.print_exc()
     end = time.perf_counter()
     total_time = end - start
     profiler.print_stat()
