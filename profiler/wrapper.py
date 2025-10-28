@@ -126,7 +126,7 @@ def replace_sys_modules(all_modules, decorated_modules):
 
 
 def run_profiled_script(script_path: str, args):
-    sys.argv = args[1:]
+    sys.argv = args.script_args
     all_modules = collect_all_modules(script_path)
     decorated_modules = decorate_all_modules(all_modules)
     replace_sys_modules(all_modules, decorated_modules)
@@ -147,11 +147,15 @@ def run_profiled_script(script_path: str, args):
         traceback.print_exc()
     end = time.perf_counter()
     total_time = end - start
+    print(f"total execution time: {total_time}")
     profiler.print_stat()
-    graph = FlameGraph.build_flame_graph(total_time, profiler.full_call_stack)
-    for line in graph:
-        print(line)
-    profiler.save_stat("stats.json")
-    analyzer = StatAnalyzer("stats.json")
-    for el in analyzer.top_slowest_tottime():
-        print(str(el)[1:-1].replace("'", ""))
+    if args.flame_graph:
+        graph = FlameGraph.build_flame_graph(total_time, profiler.full_call_stack)
+        for line in graph:
+            print(line)
+    if args.save_stats:
+        profiler.save_stat(args.save_stats)
+    if args.save_stats and args.top_slowest:
+        analyzer = StatAnalyzer(args.save_stats)
+        for el in analyzer.top_slowest_cumtime():
+            print(str(el)[1:-1].replace("'", ""))
