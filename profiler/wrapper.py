@@ -9,6 +9,7 @@ import types
 from profiler.Profiler import profiler
 from profiler.flame_graph import FlameGraph
 from profiler.module_collector import collect_all_modules
+from profiler.stat_analyzer import StatAnalyzer
 
 
 class ProfilingVisitor(ast.NodeTransformer):
@@ -102,7 +103,11 @@ def decorate_all_modules(all_modules):
 
 
 def replace_sys_modules(all_modules, decorated_modules):
-    for module_name, compiled_code in decorated_modules.items():
+    print(all_modules)
+    # print(*sys.modules, sep="\n")
+    for module_name in list(decorated_modules.keys())[::-1]:
+        print(module_name)
+        compiled_code = decorated_modules[module_name]
         if module_name == "__main__":
             continue
         try:
@@ -119,6 +124,8 @@ def replace_sys_modules(all_modules, decorated_modules):
             sys.modules[module_name] = module_obj
         except Exception as e:
             print(f"Error replacing module {module_name}: {e}")
+    # print("new modules")
+    # print(*sys.modules, sep="\n")
 
 
 def run_profiled_script(script_path: str, args):
@@ -147,3 +154,6 @@ def run_profiled_script(script_path: str, args):
     graph = FlameGraph.build_flame_graph(total_time, profiler.full_call_stack)
     for line in graph:
         print(line)
+    profiler.save_stat("stats.json")
+    analyzer = StatAnalyzer("stats.json")
+    print(analyzer.top_slowest_tottime(analyzer.get_top_number()))
