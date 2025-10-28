@@ -8,7 +8,7 @@ OPTIONS:
 * --top-slowest: выводит топ самых медленных функций по cumulative time
 выводит   
 ```
-ncallc tottime cumtime percall function
+ncalls tottime cumtime percall function
 ```
 для каждой вызванной функции
 
