@@ -1,6 +1,7 @@
 import functools
 import time
 import json
+import stat_analyzer
 
 
 class Profiler:
@@ -73,6 +74,7 @@ class Profiler:
 
 
 profiler = Profiler()
+analyzer = stat_analyzer.StatAnalyzer()
 
 
 @profiler.profile
@@ -95,3 +97,5 @@ if __name__ == "__main__":
     main()
     profiler.print_stat()
     profiler.save_stat("stats.json")
+
+    print(analyzer.top_slowest_tottime(2))
