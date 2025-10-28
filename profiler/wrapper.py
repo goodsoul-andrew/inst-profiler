@@ -103,10 +103,7 @@ def decorate_all_modules(all_modules):
 
 
 def replace_sys_modules(all_modules, decorated_modules):
-    print(all_modules)
-    # print(*sys.modules, sep="\n")
     for module_name in list(decorated_modules.keys())[::-1]:
-        print(module_name)
         compiled_code = decorated_modules[module_name]
         if module_name == "__main__":
             continue
@@ -156,4 +153,5 @@ def run_profiled_script(script_path: str, args):
         print(line)
     profiler.save_stat("stats.json")
     analyzer = StatAnalyzer("stats.json")
-    print(analyzer.top_slowest_tottime(analyzer.get_top_number()))
+    for el in analyzer.top_slowest_tottime():
+        print(str(el)[1:-1].replace("'", ""))

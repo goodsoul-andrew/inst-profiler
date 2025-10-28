@@ -29,9 +29,11 @@ class StatAnalyzer:
 
         return self.rows
 
-    def top_slowest_tottime(self, top):
+    def top_slowest_tottime(self, top=None):
         self.open_json_stat(self.filename)
         self.make_stat_table()
+        if not top:
+            top = self.get_top_number()
         rows_tot = self.rows
         rows_tot.sort(key=lambda x: x["tottime"], reverse=True)
         return [
@@ -39,9 +41,11 @@ class StatAnalyzer:
             for row in rows_tot[:top]
         ]
 
-    def top_slowest_cumtime(self, top):
+    def top_slowest_cumtime(self, top=None):
         self.open_json_stat("stats.json")
         self.make_stat_table()
+        if not top:
+            top = self.get_top_number()
         rows_cum = self.rows
         rows_cum.sort(key=lambda x: x["cumtime"], reverse=True)
         return [
